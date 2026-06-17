@@ -12,7 +12,7 @@
 // pipeline.yaml it would bypass to the upstream ov::genai implementation.
 //
 // This is the path that actually consumes the IR exported by
-// openvino.pipeline.mx. For the genai-native ov::genai::VLMPipeline contrast
+// openvino.pipeline. For the genai-native ov::genai::VLMPipeline contrast
 // (and why it does NOT consume this IR directly), see NOTES.md and the
 // reference sample genai_vlm_deploy.cpp.
 //

@@ -2,7 +2,7 @@
 REM Copyright (C) 2026 Intel Corporation
 REM SPDX-License-Identifier: Apache-2.0
 REM
-REM Stage 1 - deploy Gemma4-12B from safetensors with openvino.pipeline.mx.
+REM Stage 1 - deploy Gemma4-12B from safetensors with openvino.pipeline.
 REM
 REM The first run builds INT4 OpenVINO IR in-place inside the model directory
 REM (openvino_language_model.xml, openvino_text_embeddings_model.xml,

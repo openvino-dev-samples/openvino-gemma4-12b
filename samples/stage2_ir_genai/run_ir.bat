@@ -2,7 +2,7 @@
 REM Copyright (C) 2026 Intel Corporation
 REM SPDX-License-Identifier: Apache-2.0
 REM
-REM Stage 2 - redeploy the exported OpenVINO IR with openvino.genai.mx.
+REM Stage 2 - redeploy the exported OpenVINO IR with openvino.genai.
 REM
 REM After Stage 1 has written openvino_*.xml into the model directory, this
 REM re-runs the same pipeline. Because the IR already exists on disk, the

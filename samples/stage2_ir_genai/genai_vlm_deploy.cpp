@@ -3,7 +3,7 @@
 //
 // Stage 2 of the Gemma4 deployment workflow.
 //
-// This sample consumes the OpenVINO IR that Stage 1 (openvino.pipeline.mx /
+// This sample consumes the OpenVINO IR that Stage 1 (openvino.pipeline /
 // yaml_pipeline_sample) exported into the model directory, and runs it through
 // the *real* OpenVINO GenAI API: ov::genai::VLMPipeline.
 //
