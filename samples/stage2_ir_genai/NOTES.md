@@ -10,7 +10,7 @@ openvino_audio_embeddings_model.xml/bin
 openvino_tokenizer.xml/bin, openvino_detokenizer.xml/bin
 ```
 
-There are two ways the **openvino.genai.mx** stack can consume this IR. They differ
+There are two ways the **openvino.genai** stack can consume this IR. They differ
 in how the language model receives its input, which is the key thing to understand.
 
 ## 1. Recommended & verified: redeploy through the pipeline engine
@@ -39,9 +39,9 @@ reference; the verified runtime path is option 1.
 ## 3. genai-native `ov::genai::VLMPipeline` — `genai_vlm_deploy.cpp` (reference only)
 
 This is the upstream genai-native VLM API. It does **not** consume the IR that
-openvino.pipeline.mx exports, because the two use different language-model input contracts:
+openvino.pipeline exports, because the two use different language-model input contracts:
 
-| | pipeline.mx export (this repo) | genai-native VLMPipeline expects |
+| | pipeline export (this repo) | genai-native VLMPipeline expects |
 |---|---|---|
 | Language model input | `inputs_embeds` + `bidirectional_mask` | `inputs_embeds` + `token_type_ids` |
 | Vision `pixel_values` packing | engine layout | optimum-intel layout |

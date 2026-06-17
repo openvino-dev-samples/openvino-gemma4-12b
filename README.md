@@ -8,9 +8,9 @@ Run **Google Gemma4-12B-it** locally on an Intel GPU on Windows with OpenVINO, u
 
 This repo demonstrates two deployment stages:
 
-1. **Stage 1 — Safetensors deployment** (`openvino.pipeline.mx`): load the Hugging Face
+1. **Stage 1 — Safetensors deployment** (`openvino.pipeline`): load the Hugging Face
    safetensors model, build INT4 OpenVINO IR on the fly, and generate text.
-2. **Stage 2 — IR deployment** (`openvino.genai.mx`): redeploy the IR that Stage 1 exported
+2. **Stage 2 — IR deployment** (`openvino.genai`): redeploy the IR that Stage 1 exported
    through the OpenVINO GenAI engine — no rebuild from safetensors.
 
 > The prebuilt Windows package (OpenVINO runtime + GenAI + the pipeline engine, ~150 MB) is
@@ -25,9 +25,9 @@ The package is a single unified install tree built from three repositories:
 
 | Layer | Repo | Role |
 |-------|------|------|
-| Core runtime | `openvino.mx` | OpenVINO inference engine (`openvino.dll`) |
-| GenAI | `openvino.genai.mx` | LLM/VLM pipelines, modeling, tokenizers (`openvino_genai.dll`) |
-| Pipeline engine | `openvino.pipeline.mx` | YAML-driven modular pipeline + `yaml_pipeline_sample.exe` |
+| Core runtime | `openvino` | OpenVINO inference engine (`openvino.dll`) |
+| GenAI | `openvino.genai` | LLM/VLM pipelines, modeling, tokenizers (`openvino_genai.dll`) |
+| Pipeline engine | `openvino.pipeline` | YAML-driven modular pipeline + `yaml_pipeline_sample.exe` |
 
 Two ways to deploy the model:
 
