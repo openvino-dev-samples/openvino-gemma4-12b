@@ -1,0 +1,181 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+global_context:
+  model_type: "gemma4_unified"
+
+pipeline_modules:
+  pipeline_params:
+    type: "ParameterModule"
+    outputs:
+      - name: "image"
+        type: "OVTensor"
+      - name: "audio"
+        type: "OVTensor"
+      - name: "prompt"
+        type: "String"
+
+  image_preprocessor:
+    type: "ImagePreprocessModule"
+    device: "GPU"
+    description: "Image or Video preprocessing."
+    inputs:
+      - name: "image"
+        type: "OVTensor"
+        source: "pipeline_params.image"
+    outputs:
+      - name: "pixel_values"
+        type: "VecOVTensor"
+      - name: "image_position_ids"
+        type: "VecOVTensor"
+    params:
+      model_path: "models/gemma-4-12B-it/"
+
+  audio_preprocessor:
+    type: "AudioPreprocessModule"
+    device: "GPU"
+    description: "Audio preprocessing."
+    inputs:
+      - name: "audio"
+        type: "OVTensor"
+        source: "pipeline_params.audio"
+    outputs:
+      - name: "input_features"
+        type: "OVTensor"
+      - name: "input_features_mask"
+        type: "OVTensor"
+    params:
+      model_path: "models/gemma-4-12B-it/"
+
+  prompt_encoder:
+    type: "TextEncoderModule"
+    device: "GPU"
+    inputs:
+      - name: "prompt"
+        type: "String"
+        source: "pipeline_params.prompt"
+      - name: "image_position_ids"
+        type: "VecOVTensor"
+        source: "image_preprocessor.image_position_ids"
+      - name: "audio_features"
+        type: "OVTensor"
+        source: "audio_preprocessor.input_features"
+    outputs:
+      - name: "input_ids"
+        type: "OVTensor"
+      - name: "attention_mask"
+        type: "OVTensor"
+      - name: "mm_token_type_ids"
+        type: "OVTensor"
+    params:
+      model_path: "models/gemma-4-12B-it/"
+
+  vision_encoder:
+    type: "VisionEncoderModule"
+    device: "GPU"
+    inputs:
+      - name: "preprocessed_image"
+        type: "VecOVTensor"
+        source: "image_preprocessor.pixel_values"
+      - name: "image_position_ids"
+        type: "VecOVTensor"
+        source: "image_preprocessor.image_position_ids"
+    outputs:
+      - name: "vision_embeddings"
+        type: "OVTensor"
+    params:
+      model_path: "models/gemma-4-12B-it/"
+      quant_config: "none" # Keep vision embedder in FP16 (small model, precision-sensitive)
+
+  audio_encoder:
+    type: "AudioEncoderModule"
+    device: "GPU"
+    inputs:
+      - name: "input_features"
+        type: "OVTensor"
+        source: "audio_preprocessor.input_features"
+      - name: "feature_attention_mask"
+        type: "OVTensor"
+        source: "audio_preprocessor.input_features_mask"
+    outputs:
+      - name: "audio_embeddings"
+        type: "OVTensor"
+    params:
+      model_path: "models/gemma-4-12B-it/"
+      quant_config: "none" # Keep audio embedder in FP16 (small model, precision-sensitive)
+
+  text_embeds:
+    type: "TextEmbeddingModule"
+    device: "GPU"
+    inputs:
+      - name: "input_ids"
+        type: "OVTensor"
+        source: "prompt_encoder.input_ids"
+    outputs:
+      - name: "inputs_embeds"
+        type: "OVTensor"
+    params:
+      model_path: "models/gemma-4-12B-it/"
+      quant_config: "int4_asym" # INT4 with backup_mode=mode (quantize embedding table)
+
+  merge_embeds:
+    type: "LLMEmbeddingFusionModule"
+    device: "GPU"
+    description: "Merge text, vision and audio embeddings for LLM input."
+    inputs:
+      - name: "text_embeds"
+        type: "OVTensor"
+        source: "text_embeds.inputs_embeds"
+      - name: "visual_embeds"
+        type: "OVTensor"
+        source: "vision_encoder.vision_embeddings"
+      - name: "audio_embeds"
+        type: "OVTensor"
+        source: "audio_encoder.audio_embeddings"
+      - name: "mm_token_type_ids"
+        type: "OVTensor"
+        source: "prompt_encoder.mm_token_type_ids"
+    outputs:
+      - name: "merged_embeds"
+        type: "OVTensor"
+      - name: "bidirectional_mask"
+        type: "OVTensor"
+      - name: "position_ids"
+        type: "OVTensor"
+    params:
+      model_path: "models/gemma-4-12B-it/"
+      quant_config: "int4_asym" # int4_asym, int4_sym, int8_asym, int8_sym
+
+  llm:
+    type: "LLMInferenceCBModule"
+    device: "GPU"
+    inputs:
+      - name: "inputs_embeds"
+        type: "OVTensor"
+        source: "merge_embeds.merged_embeds"
+      - name: "bidirectional_mask"
+        type: "OVTensor"
+        source: "merge_embeds.bidirectional_mask"
+      - name: "attention_mask"
+        type: "OVTensor"
+        source: "prompt_encoder.attention_mask"
+      - name: "position_ids"
+        type: "OVTensor"
+        source: "merge_embeds.position_ids"
+    outputs:
+      - name: "generated_text"
+        type: "String"
+    params:
+      model_path: "models/gemma-4-12B-it/"
+      text_embeds_model_path: "models/gemma-4-12B-it/"
+      quant_config: "int4_asym" # int4_asym, int4_sym, int8_asym, int8_sym
+      max_new_tokens: 128
+      max_num_batched_tokens: 4096
+      top_k: "1"
+      no_repeat_ngram_size: "3"
+
+  pipeline_result:
+    type: "ResultModule"
+    inputs:
+      - name: "generated_text"
+        type: "String"
+        source: "llm.generated_text"

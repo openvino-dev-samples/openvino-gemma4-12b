@@ -1,0 +1,25 @@
+# Prebuilt package (shipped as a GitHub Release asset, not in git)
+install/
+*.zip
+*.tgz
+
+# Models (downloaded from Hugging Face; never committed)
+models/
+
+# Python virtual environment
+python-env/
+.venv/
+venv/
+
+# Build trees
+build/
+**/build/
+*_cache/
+genai_vlm_cache/
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.user
+Thumbs.db
+.DS_Store
