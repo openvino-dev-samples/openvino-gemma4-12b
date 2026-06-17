@@ -79,7 +79,7 @@ and unzip it into `install\` at the repository root:
 ```cmd
 :: download the package (~150 MB) from the v2026.06 Release, e.g.:
 curl -L -o pipeline_windows_x86_64.zip ^
-  https://github.com/openvino-dev-samples/openvino-gemma4-12b/releases/download/v2026.06/pipeline_windows_20260616_x86_64.zip
+  https://github.com/openvino-dev-samples/openvino-gemma4-12b/releases/download/v2026.06/pipeline_windows_20260617_x86_64.zip
 
 powershell -Command "Expand-Archive -Path pipeline_windows_x86_64.zip -DestinationPath install -Force"
 
