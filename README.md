@@ -175,8 +175,14 @@ samples\stage2_ir_genai\build.bat
 Produces `genai_facade_llm.exe` (`ov::pipeline::LLMPipeline`, the GenAI-compatible facade) and
 `genai_vlm_deploy.exe` (`ov::genai::VLMPipeline`, genai-native reference). Read
 [`samples/stage2_ir_genai/NOTES.md`](samples/stage2_ir_genai/NOTES.md) first — it explains which
-sample consumes this IR and the genai-native contract difference. If the build reports a missing
-`openvino/genai/chat_history.hpp`, supplement from a GenAI source checkout:
+sample consumes this IR and the genai-native contract difference.
+
+> **Note (package-only users):** this prebuilt package ships the GenAI-compatible *shadow* headers,
+> which `#include` a few upstream GenAI headers (e.g. `openvino/genai/chat_history.hpp`) that the
+> package does not bundle. So the plain `build.bat` will fail with
+> `fatal error C1083: ... openvino/genai/chat_history.hpp` **unless** you point it at an OpenVINO
+> GenAI source checkout. These C++ samples are optional reference code — the verified runtime path
+> (Stages 1, 2 and the multimodal demo) needs **no** compilation. To build them anyway:
 
 ```cmd
 set GENAI_SRC_INCLUDE=D:\path\to\openvino.genai\src\cpp\include
@@ -196,8 +202,10 @@ rebuild from safetensors), now consuming the image input too.
 call install\setupvars.bat
 install\samples\cpp\yaml_pipeline_sample.exe ^
     samples\stage1_safetensors\config\config_modeling_text_img_audio_cb_st.yaml ^
-    "image=path\to\your.png" "prompt=What is shown in this image?"
+    "image=samples\GoldenGate.png" "prompt=What is shown in this image?"
 ```
+
+(A sample image `samples\GoldenGate.png` is included in the repo; swap in any `.png`/`.jpg` of your own.)
 
 Expected (abridged — verified with the Golden Gate sample image, deployed from IR on GPU):
 
