@@ -72,12 +72,16 @@ All commands below are run from the **repository root** in a `cmd` prompt.
 
 ## 3. Get the prebuilt package
 
-Download the package zip from this repo's **Releases** page and unzip it into `install\` at the
-repository root:
+Download the package zip from this repo's
+[**Releases** page](https://github.com/openvino-dev-samples/openvino-gemma4-12b/releases/tag/v2026.06)
+and unzip it into `install\` at the repository root:
 
 ```cmd
-:: download pipeline_windows_<date>_x86_64.zip from the GitHub Release, then:
-powershell -Command "Expand-Archive -Path pipeline_windows_*.zip -DestinationPath install -Force"
+:: download the package (~150 MB) from the v2026.06 Release, e.g.:
+curl -L -o pipeline_windows_x86_64.zip ^
+  https://github.com/openvino-dev-samples/openvino-gemma4-12b/releases/download/v2026.06/pipeline_windows_20260616_x86_64.zip
+
+powershell -Command "Expand-Archive -Path pipeline_windows_x86_64.zip -DestinationPath install -Force"
 
 :: sanity check
 dir install\setupvars.bat
