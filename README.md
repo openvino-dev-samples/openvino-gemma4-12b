@@ -185,9 +185,12 @@ samples\stage2_ir_genai\build.bat
 
 ---
 
-## 8. Multimodal (image + text)
+## 8. Multimodal (image + text) — also a genai IR deployment
 
-The bundled config is multimodal. Pass an image to `yaml_pipeline_sample.exe`:
+The bundled config is multimodal: the vision, text and language IR were all exported in Stage 1.
+Passing an image just adds the vision branch — once the `openvino_*.xml` exist, this is the **same
+"deploy from IR" path as Stage 2** (the engine loads the vision/text/language IR from disk; no
+rebuild from safetensors), now consuming the image input too.
 
 ```cmd
 call install\setupvars.bat
@@ -196,7 +199,21 @@ install\samples\cpp\yaml_pipeline_sample.exe ^
     "image=path\to\your.png" "prompt=What is shown in this image?"
 ```
 
-(Audio works the same way with `audio=path\to\clip.wav`.)
+Expected (abridged — verified with the Golden Gate sample image, deployed from IR on GPU):
+
+```
+Pipeline constructed successfully.
+Pipeline execution finished in ~13000 ms
+Output 'generated_text': The image shows a close-up view of a large, complex metal or steel
+structure, likely part of a bridge ... set against a background of water ...
+```
+
+(Audio works the same way with `audio=path\to\clip.wav`, using the exported
+`openvino_audio_embeddings_model.xml`.)
+
+> This is the multimodal counterpart of Stage 2: the GenAI / pipeline engine deploys the exported
+> IR — it does **not** re-read the safetensors. See
+> [`samples/stage2_ir_genai/NOTES.md`](samples/stage2_ir_genai/NOTES.md).
 
 ---
 
