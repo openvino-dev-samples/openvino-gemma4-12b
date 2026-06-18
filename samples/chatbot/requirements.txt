@@ -1,0 +1,4 @@
+# GUI for the multimodal chatbot demo.
+# transformers + openvino-tokenizers come from scripts\setup_env.bat (used by Stage 1);
+# this only adds the web UI.
+gradio>=5.0

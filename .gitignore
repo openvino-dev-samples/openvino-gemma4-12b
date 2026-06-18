@@ -17,6 +17,10 @@ build/
 *_cache/
 genai_vlm_cache/
 
+# Python caches
+__pycache__/
+*.pyc
+
 # Editor / OS noise
 .vscode/
 .idea/

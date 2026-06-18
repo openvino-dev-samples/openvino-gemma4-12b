@@ -225,7 +225,24 @@ structure, likely part of a bridge ... set against a background of water ...
 
 ---
 
-## 9. Troubleshooting
+## 9. Multimodal chatbot demo (GUI)
+
+A small **Gradio** web UI that wraps everything above: type a message, optionally attach an image
+and/or a `.wav`, and get a streamed reply — all from the exported INT4 IR on the Intel GPU.
+
+```cmd
+samples\chatbot\run_chatbot.bat
+```
+
+This opens http://127.0.0.1:7860 in your browser. Under the hood each turn spawns one
+`yaml_pipeline_sample.exe` run (the package's only interface), so it is **single-turn** (no
+conversation memory) and the first token of each reply includes IR load + GPU compile. All three
+input modalities are verified working (text, image, audio). See
+[`samples/chatbot/README.md`](samples/chatbot/README.md) for details and notes.
+
+---
+
+## 10. Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
@@ -256,6 +273,8 @@ openvino-gemma4-12b/
       genai_facade_llm.cpp                     # ov::pipeline::LLMPipeline (facade)
       genai_vlm_deploy.cpp                     # ov::genai::VLMPipeline (reference; see NOTES)
       CMakeLists.txt, build.bat, NOTES.md
+    chatbot/                                   # multimodal chatbot demo (Gradio GUI)
+      run_chatbot.bat, app.py, pipeline_runner.py, requirements.txt, README.md
   install/      (you unzip the Release package here — gitignored)
   models/       (you download the model here — gitignored)
 ```
