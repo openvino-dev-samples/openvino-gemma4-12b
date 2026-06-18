@@ -78,7 +78,10 @@ text + (image?) + (audio?)
   text-only turn, and longer (~10 s) for image turns. This is a demo, not a
   production service. A natural future optimization is a GPU `cache_dir` to reuse
   the compiled blobs, or a long-lived server process.
-- **Audio** input uses a `.wav` file (e.g. the Gemma cookbook's `journal1.wav`).
+- **Audio** input uses a `.wav` file. Two sample assets are bundled in `samples/`
+  (`GoldenGate.png`, `journal1.wav`) and preloaded as examples, including an
+  **image + audio together** example — you can attach an image *and* an audio clip
+  in the same turn and ask about both at once (verified working).
   All three modalities were verified working (text, image, audio). Audio replies
   can be **prompt-sensitive**: an explicit instruction like *"Transcribe the
   following speech segment in its original language."* or *"What kind of sound is

@@ -14,6 +14,8 @@ previous turns. The chat history you see is for your reference only.
 
 Run via `run_chatbot.bat`, or:  python app.py
 """
+from pathlib import Path
+
 import gradio as gr
 
 import pipeline_runner as pr
@@ -91,13 +93,19 @@ def build_demo():
             send = gr.Button("Send", variant="primary", scale=1)
             clear = gr.Button("Clear", scale=1)
 
+        # Bundled sample assets (resolved absolutely so they work regardless of CWD).
+        _here = Path(__file__).resolve().parent
+        _img = str(_here.parent / "GoldenGate.png")      # samples/GoldenGate.png
+        _aud = str(_here.parent / "journal1.wav")        # samples/journal1.wav
         gr.Examples(
             examples=[
                 ["How do black holes work?", None, None],
-                ["What is shown in this image?", "../GoldenGate.png", None],
+                ["What is shown in this image?", _img, None],
+                ["What kind of sound is in this audio?", None, _aud],
+                ["Describe the image and the audio together.", _img, _aud],
             ],
             inputs=[msg, image_in, audio_in],
-            label="Examples",
+            label="Examples (text / image / audio / image+audio)",
         )
 
         # Submitting clears the attachments after sending (single-turn).
