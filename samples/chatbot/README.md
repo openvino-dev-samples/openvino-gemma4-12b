@@ -83,10 +83,9 @@ Gradio front end and pre-warms the process when the demo launches.
   (`GoldenGate.png`, `journal1.wav`) and preloaded as examples, including an
   **image + audio together** example — you can attach an image *and* an audio clip
   in the same turn and ask about both at once (verified working).
-  All three modalities were verified working (text, image, audio). Audio replies
-  can be **prompt-sensitive**: an explicit instruction like *"Transcribe the
-  following speech segment in its original language."* or *"What kind of sound is
-  in this audio?"* reliably engages the audio branch, whereas some terse phrasings
-  may make the model claim it received no audio even though the clip was processed.
+  All three modalities were verified working (text, image, audio). The loader
+  reads the first channel and **resamples to 16 kHz** (the rate the audio
+  frontend expects), so WAV files at any sample rate (e.g. 44.1/48 kHz) are
+  handled correctly.
 - If a reply is empty or errors, see the main README's Troubleshooting section
   (GPU driver, missing IR, tokenizer conversion).
