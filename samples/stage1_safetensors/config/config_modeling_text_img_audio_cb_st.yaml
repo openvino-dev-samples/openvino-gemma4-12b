@@ -13,6 +13,8 @@ pipeline_modules:
         type: "OVTensor"
       - name: "prompt"
         type: "String"
+      - name: "text_streamer"
+        type: "StreamerVariantPtr"
 
   image_preprocessor:
     type: "ImagePreprocessModule"
@@ -161,6 +163,9 @@ pipeline_modules:
       - name: "position_ids"
         type: "OVTensor"
         source: "merge_embeds.position_ids"
+      - name: "text_streamer"
+        type: "StreamerVariantPtr"
+        source: "pipeline_params.text_streamer"
     outputs:
       - name: "generated_text"
         type: "String"
