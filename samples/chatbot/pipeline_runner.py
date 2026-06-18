@@ -2,21 +2,23 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
-"""Thin wrapper that drives the Gemma4-12B OpenVINO pipeline for the chatbot demo.
+"""Drive the Gemma4-12B OpenVINO pipeline for the chatbot demo.
 
-The prebuilt package ships only the C++ `yaml_pipeline_sample.exe` (there is no
-`pipeline`/`openvino_genai` Python binding), so each chat turn spawns one
-process: it builds the pipeline from the YAML config, runs once, streams tokens
-to stdout via the `text_streamer` input, and exits. This module spawns that
-process, puts the package's runtime DLLs on PATH, and yields generated text
-incrementally as the tokens arrive so the GUI streams the reply live.
+The prebuilt package ships the C++ `yaml_pipeline_sample.exe`, which now has a
+resident **server mode** (`--serve`): it builds the pipeline once — paying the
+one-time GPU compile at startup — then reads one JSON request per line from
+stdin and streams the reply to stdout, keeping the compiled model resident.
 
-Because each turn is an independent process, this is a single-turn demo (no
-conversation memory) — which matches what the sample actually supports.
+This module starts one such server process (lazily, on first use) and reuses it
+for every question, so only the *first* turn waits for the model to load; after
+that, each reply starts streaming in about a second. The previous design spawned
+a fresh process per question, which recompiled the model for the GPU every time
+(~10 s before the first token). A lock serializes turns over the single process.
 """
+import json
 import os
-import re
 import subprocess
+import threading
 from pathlib import Path
 
 # repo root = three levels up from this file (samples/chatbot/pipeline_runner.py)
@@ -25,19 +27,22 @@ DEFAULT_INSTALL = REPO / "install"
 DEFAULT_CONFIG = REPO / "samples" / "stage1_safetensors" / "config" / "config_modeling_text_img_audio_cb_st.yaml"
 MODEL_DIR = REPO / "models" / "gemma-4-12B-it"
 
-# The sample prints a config/banner dump, then "Running pipeline...", then streams
-# the generated tokens live to stdout (via the `text_streamer` input), and finally
-# echoes the full reply on a single authoritative line:
-#     Running pipeline...
-#     <tokens streamed here, live, during decode>
-#     Pipeline execution finished in <N> ms
-#     --- Pipeline Output ---
-#     Output 'generated_text': <the full reply>
-# We stream the live region between "Running pipeline..." and "Pipeline execution
-# finished", and fall back to the authoritative line if the live capture is empty.
-_RUN_MARKER = "Running pipeline..."
-_END_MARKERS = ("Pipeline execution finished", "--- Pipeline Output ---", "Total generate time:")
-_RESULT_RE = re.compile(r"Output 'generated_text':\s*(.*)", re.S)
+# Sentinels printed by the exe's --serve mode (keep in sync with the C++ source).
+_READY = "<<<__PIPELINE_READY__>>>"
+_END = "<<<__END_OF_RESPONSE__>>>"
+
+# When an image/audio is attached, the exe prints a couple of media-load log lines
+# ("Loading image: ...", "Shape: [...]", "Loading audio: ...", "Samples: ...") to
+# stdout before the generated tokens. Drop those so they don't show in the bubble.
+import re as _re
+_MEDIA_LOG_RE = _re.compile(
+    r"^\s*(Loading (image|audio|video):.*|Shape:.*|Samples:.*|Stacked shape:.*)$",
+    _re.MULTILINE,
+)
+
+
+def _strip_media_logs(text: str) -> str:
+    return _MEDIA_LOG_RE.sub("", text)
 
 
 def resolve(install: str | None = None, config: str | None = None):
@@ -72,93 +77,120 @@ def build_env(install_dir: Path) -> dict:
     return env
 
 
+class PipelineServer:
+    """A resident `yaml_pipeline_sample.exe --serve` process, reused across turns."""
+
+    def __init__(self, install: str | None = None, config: str | None = None):
+        self.install_dir, self.config_path, self.sample = resolve(install, config)
+        self._proc: subprocess.Popen | None = None
+        self._lock = threading.Lock()
+
+    def is_started(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None
+
+    def start(self):
+        """Spawn the server and block until the model is compiled and resident."""
+        if self.is_started():
+            return
+        args = [str(self.sample), str(self.config_path), "--serve"]
+        self._proc = subprocess.Popen(
+            args, cwd=str(REPO), env=build_env(self.install_dir),
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            bufsize=0,
+        )
+        # Wait for the READY sentinel (one-time GPU compile happens here).
+        while True:
+            raw = self._proc.stdout.readline()
+            if not raw:
+                rc = self._proc.poll()
+                raise RuntimeError(f"pipeline server exited during startup (code {rc})")
+            if _READY in raw.decode("utf-8", "replace"):
+                break
+
+    def _read_response(self):
+        """Yield the growing reply for the current turn until the END sentinel.
+
+        Tokens stream to stdout without newlines, so we read small byte chunks
+        (not lines) to surface text live. We keep a small tail buffer so the END
+        sentinel is detected even if it straddles two reads, and decode a fresh
+        copy of the whole accumulated byte buffer each time to avoid splitting a
+        multi-byte UTF-8 character.
+        """
+        buf = bytearray()
+        while True:
+            raw = self._proc.stdout.read(32)
+            if not raw:
+                text = bytes(buf).decode("utf-8", "replace")
+                text = text.split(_END, 1)[0]
+                if text.strip():
+                    yield text
+                return
+            buf.extend(raw)
+            text = bytes(buf).decode("utf-8", "replace")
+            if _END in text:
+                yield text.split(_END, 1)[0]
+                return
+            yield text
+
+    def generate(self, prompt: str, image: str | None = None, audio: str | None = None):
+        """Stream the reply for one turn. Serialized via a lock (single process)."""
+        with self._lock:
+            if not self.is_started():
+                self.start()
+            req = {"prompt": prompt}
+            if image:
+                req["image"] = str(image)
+            if audio:
+                req["audio"] = str(audio)
+            self._proc.stdin.write((json.dumps(req) + "\n").encode("utf-8"))
+            self._proc.stdin.flush()
+            emitted = False
+            for chunk in self._read_response():
+                cleaned = _strip_media_logs(chunk).strip()
+                if cleaned:
+                    emitted = True
+                    yield cleaned
+            if not emitted:
+                yield "(no output — check the GPU driver and that Stage 1 exported the IR)"
+
+    def stop(self):
+        if self.is_started():
+            try:
+                self._proc.stdin.write(b'{"cmd":"quit"}\n')
+                self._proc.stdin.flush()
+                self._proc.wait(timeout=5)
+            except Exception:
+                self._proc.kill()
+        self._proc = None
+
+
+# Module-level singleton: one resident server shared by the whole GUI session.
+_SERVER: PipelineServer | None = None
+_SERVER_LOCK = threading.Lock()
+
+
+def get_server(install: str | None = None, config: str | None = None) -> PipelineServer:
+    global _SERVER
+    with _SERVER_LOCK:
+        if _SERVER is None:
+            _SERVER = PipelineServer(install, config)
+        return _SERVER
+
+
+def is_warm() -> bool:
+    """True if the resident server is up (model already compiled)."""
+    return _SERVER is not None and _SERVER.is_started()
+
+
+def warmup(install: str | None = None, config: str | None = None):
+    """Start the resident server now (compile the model) so the first chat turn is fast."""
+    get_server(install, config).start()
+
+
 def stream_generate(prompt: str, image: str | None = None, audio: str | None = None,
                     install: str | None = None, config: str | None = None):
-    """Yield the reply for one turn, live — token by token as the model decodes.
-
-    The sample streams tokens to stdout via `text_streamer`. We spawn it, read
-    stdout unbuffered, and once past the "Running pipeline..." marker we emit the
-    accumulated generated text as each chunk arrives. The trailing
-    "Output 'generated_text':" line is used only as a fallback if nothing streamed.
-    """
-    install_dir, config_path, sample = resolve(install, config)
-    args = [str(sample), str(config_path)]
-    if image:
-        args.append(f"image={image}")
-    if audio:
-        args.append(f"audio={audio}")
-    args.append(f"prompt={prompt}")
-    args.append("text_streamer")  # wire the live token stream (config routes it to the LLM module)
-
-    proc = subprocess.Popen(
-        args, cwd=str(REPO), env=build_env(install_dir),
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0,
-    )
-
-    buf = bytearray()          # raw bytes seen so far (whole stdout)
-    started = False            # passed the "Running pipeline..." marker?
-    reply = ""                 # live-streamed text accumulated after the marker
-    emit_base = 0              # index in `buf` where the live region begins
-
-    def _decode(b: bytes) -> str:
-        return b.decode("utf-8", errors="replace")
-
-    try:
-        while True:
-            chunk = proc.stdout.read(64)
-            if not chunk:
-                break
-            buf.extend(chunk)
-
-            if not started:
-                text = _decode(bytes(buf))
-                idx = text.find(_RUN_MARKER)
-                if idx != -1:
-                    started = True
-                    # live region begins right after the marker line's newline
-                    nl = text.find("\n", idx)
-                    emit_base = len(text[: nl + 1].encode("utf-8")) if nl != -1 else len(buf)
-                continue
-
-            # We're in the live region — decode everything after emit_base and,
-            # if an end marker has appeared, trim the streamed reply at it.
-            region = _decode(bytes(buf[emit_base:]))
-            cut = len(region)
-            for m in _END_MARKERS:
-                p = region.find(m)
-                if p != -1:
-                    cut = min(cut, p)
-            candidate = region[:cut]
-            if candidate != reply:
-                reply = candidate
-                yield reply.strip()
-    finally:
-        rest = proc.stdout.read()
-        if rest:
-            buf.extend(rest)
-        proc.wait()
-
-    full = _decode(bytes(buf))
-
-    # Authoritative fallback: if streaming surfaced nothing (or looks empty),
-    # parse the final "Output 'generated_text':" line.
-    if not reply.strip():
-        m = _RESULT_RE.search(full)
-        if m:
-            authoritative = m.group(1)
-            nxt = re.search(r"\nOutput '", authoritative)
-            if nxt:
-                authoritative = authoritative[: nxt.start()]
-            authoritative = authoritative.strip()
-            if authoritative:
-                yield authoritative
-                return
-        low = full.lower()
-        if "error" in low or "exception" in low:
-            snippet = full.strip().splitlines()[-1] if full.strip() else "(no output)"
-            yield f"(pipeline error: {snippet})"
-        else:
-            yield "(no output — check the GPU driver and that Stage 1 exported the IR)"
+    """Yield the reply for one turn, live — token by token — via the resident server."""
+    yield from get_server(install, config).generate(prompt, image=image, audio=audio)
 
 
 def generate(prompt: str, image: str | None = None, audio: str | None = None,
@@ -181,15 +213,19 @@ if __name__ == "__main__":
     p = sys.argv[1] if len(sys.argv) > 1 else "Hello"
     img = sys.argv[2] if len(sys.argv) > 2 else None
     aud = sys.argv[3] if len(sys.argv) > 3 else None
-    print(f"[runner] prompt={p!r} image={img} audio={aud}\n--- streaming (live) ---")
+    print("[runner] starting resident server (one-time compile)…")
     t0 = time.time()
+    warmup()
+    print(f"[runner] server ready in {time.time()-t0:.1f}s")
+    print(f"[runner] prompt={p!r} image={img} audio={aud}\n--- streaming (live) ---")
+    t1 = time.time()
     n = 0
     out = ""
     for chunk in stream_generate(p, img, aud):
         n += 1
-        new = chunk[len(out):] if chunk.startswith(out) else chunk
         out = chunk
-        if n <= 3 or n % 20 == 0:
-            print(f"[+{time.time()-t0:5.1f}s] update #{n}: …{new[-30:]!r}")
-    print(f"--- done: {n} live updates in {time.time()-t0:.1f}s ---")
+        if n == 1:
+            print(f"[+{time.time()-t1:.2f}s] first token")
+    print(f"--- done: {n} updates, first-token shown above ---")
     print(out)
+    get_server().stop()

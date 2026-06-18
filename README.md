@@ -234,10 +234,11 @@ and/or a `.wav`, and get a streamed reply — all from the exported INT4 IR on t
 samples\chatbot\run_chatbot.bat
 ```
 
-This opens http://127.0.0.1:7860 in your browser. Under the hood each turn spawns one
-`yaml_pipeline_sample.exe` run (the package's only interface), so it is **single-turn** (no
-conversation memory) and the first token of each reply includes IR load + GPU compile. All three
-input modalities are verified working (text, image, audio). See
+This opens http://127.0.0.1:7860 in your browser. Under the hood a resident
+`yaml_pipeline_sample.exe --serve` process (the package's only interface) compiles the model for
+the GPU **once at startup** and stays loaded, so after the first load each reply starts streaming
+in about a second. It is **single-turn** (no conversation memory). All three input modalities are
+verified working (text, image, audio). See
 [`samples/chatbot/README.md`](samples/chatbot/README.md) for details and notes.
 
 ---

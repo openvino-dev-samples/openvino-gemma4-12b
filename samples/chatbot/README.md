@@ -46,38 +46,39 @@ python samples\chatbot\app.py
 
 The prebuilt package exposes the model through the C++
 `yaml_pipeline_sample.exe` (there is no `pipeline`/`openvino_genai` Python
-binding), so each chat turn **spawns one pipeline process**: it builds the
-pipeline from `config_modeling_text_img_audio_cb_st.yaml`, runs once with
-`image=` / `audio=` / `prompt=` inputs, streams tokens to stdout via the
-`text_streamer` input, and exits. `pipeline_runner.py` wraps that — it puts the
-package DLLs on `PATH`, runs from the repo root so the config's relative
-`model_path` resolves, and yields text incrementally; `app.py` is the Gradio
-front end.
+binding). The exe runs in **resident server mode** (`--serve`): it builds the
+pipeline from `config_modeling_text_img_audio_cb_st.yaml` **once** — paying the
+GPU compile at startup — then reads one JSON request per line from stdin and
+streams the reply to stdout, keeping the compiled model resident.
+`pipeline_runner.py` starts one such process (puts the package DLLs on `PATH`,
+runs from the repo root so the config's relative `model_path` resolves) and
+reuses it for every question, yielding text incrementally; `app.py` is the
+Gradio front end and pre-warms the process when the demo launches.
 
 ```
-text + (image?) + (audio?)
-        │
-        ▼
- pipeline_runner.stream_generate()
-        │  spawns
-        ▼
- install\samples\cpp\yaml_pipeline_sample.exe   (deploys the exported INT4 IR on GPU)
-        │  streams tokens
-        ▼
-   Gradio chat bubble
+        demo launches → pipeline_runner.warmup()
+                              │ spawns once (one-time GPU compile ~10 s)
+                              ▼
+        install\samples\cpp\yaml_pipeline_sample.exe --serve   (INT4 IR resident on GPU)
+                              ▲ │
+   text + (image?) + (audio?)│ │ streams tokens
+   per turn (JSON on stdin)  │ ▼
+                         Gradio chat bubble   (each reply starts in ~1 s)
 ```
 
 ## Notes & limitations
 
-- **Single-turn / no memory.** Each message is an independent process, matching
-  what the sample supports — the chat history shown is for your reference and is
-  not fed back into the model. (Multi-turn would require a resident server, which
-  the prebuilt package doesn't expose.)
-- **First-token latency includes startup.** Every turn reloads the IR and
-  compiles for the GPU, so expect a few seconds before text appears for a
-  text-only turn, and longer (~10 s) for image turns. This is a demo, not a
-  production service. A natural future optimization is a GPU `cache_dir` to reuse
-  the compiled blobs, or a long-lived server process.
+- **Single-turn / no memory.** Each message is fed to the model independently —
+  the chat history shown is for your reference and is not fed back into the
+  model. (The pipeline stays resident for speed, but the demo does not thread
+  prior turns into the prompt.)
+- **First load compiles the model; later turns are fast.** The model is compiled
+  for the GPU **once** when the demo starts (~10 s) and then stays loaded, so
+  after that each reply starts streaming in about a second. The first *image*
+  question also pays a one-time vision-encoder compile (~10 s); subsequent image
+  questions are fast. To make the one-time startup compile faster on later
+  launches too, set `OV_PIPELINE_CACHE_DIR` to a writable folder before starting
+  the demo — OpenVINO then persists the compiled GPU blob and reuses it.
 - **Audio** input uses a `.wav` file. Two sample assets are bundled in `samples/`
   (`GoldenGate.png`, `journal1.wav`) and preloaded as examples, including an
   **image + audio together** example — you can attach an image *and* an audio clip

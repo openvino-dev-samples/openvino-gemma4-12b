@@ -14,6 +14,7 @@ previous turns. The chat history you see is for your reference only.
 
 Run via `run_chatbot.bat`, or:  python app.py
 """
+import threading
 from pathlib import Path
 
 import gradio as gr
@@ -23,8 +24,10 @@ import pipeline_runner as pr
 STATUS_OK = (
     "**Model:** google/gemma-4-12B-it (INT4_ASYM)  •  "
     "**Device:** GPU  •  **Mode:** single-turn (no memory)\n\n"
-    "Each reply spawns a fresh pipeline process, so first-token latency includes "
-    "loading the IR and compiling for the GPU — a few seconds for text, longer for images."
+    "A resident pipeline process compiles the model for the GPU **once at startup** "
+    "(~10 s), then stays loaded — so after the first load each reply starts streaming "
+    "in about a second. The first image question also pays a one-time vision-encoder "
+    "compile."
 )
 
 
@@ -56,6 +59,14 @@ def respond(message, image, audio, history):
         history[-1]["content"] = f"⚠️ Deployment not ready:\n\n{err}"
         yield history, ""
         return
+
+    # First turn pays the one-time model compile; show a clear status while it loads.
+    if not pr.is_warm():
+        history[-1]["content"] = "⏳ Loading the model and compiling for the GPU (one-time, ~10 s)…"
+        yield history, ""
+        pr.warmup()
+        history[-1]["content"] = "▌"
+        yield history, ""
 
     prompt = message if message else "Describe the attached input in detail."
     try:
@@ -121,5 +132,20 @@ def build_demo():
     return demo
 
 
+def _prewarm():
+    """Start compiling the model as soon as the demo launches (in the background),
+    so the GPU compile is done — or well underway — before the first question."""
+    if pr.check_ready():
+        return  # not deployed yet; respond() will surface the error
+    try:
+        print("[chatbot] pre-warming pipeline (compiling model for the GPU)…")
+        pr.warmup()
+        print("[chatbot] pipeline ready.")
+    except Exception as e:
+        print(f"[chatbot] pre-warm skipped: {e}")
+
+
 if __name__ == "__main__":
+    # Kick off the one-time compile at startup so it overlaps with the browser opening.
+    threading.Thread(target=_prewarm, daemon=True).start()
     build_demo().queue().launch(server_name="127.0.0.1", inbrowser=True)
